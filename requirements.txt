@@ -1,2 +1,10 @@
+# requirements.txt
+# This file lists all Python packages required to run the ODE solver project.
+# sympy: Symbolic mathematics (parsing, solving ODEs analytically)
+# numpy: Numerical computations, array handling
+# matplotlib: Plotting and visualization
+# scipy: Numerical ODE solvers (for non-linear or unsolvable ODEs)
 sympy
+numpy
 matplotlib
+scipy
