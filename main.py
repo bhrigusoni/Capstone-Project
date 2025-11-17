@@ -3,12 +3,11 @@ Main entry point for the ODE Solver project
 Supports both Linear and Non-linear ODEs
 """
 from ode_solver.solver import ODESolver
-from ode_solver.visualization import plot_solution
-from ode_solver.order_comparison import compare_orders
-
+from ode_solver.parser import parse_ode
 
 import sympy as sp
 import numpy as np
+import matplotlib.pyplot as plt
 
 def main():
     """
@@ -65,7 +64,6 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
         ode_strs = [ode_str]
 
     # Parse and solve each ODE
-    import re
     x = sp.symbols('x')
     y = sp.Function('y')
     # Common x grid used for plotting (can be masked for invalid points)
@@ -73,31 +71,8 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
     solutions = []
     labels = []
     for idx, ode_str in enumerate(ode_strs):
-        ode_str_orig = ode_str
-        # If '=' is present, move all terms to LHS
-        if '=' in ode_str:
-            parts = ode_str.split('=')
-            lhs = parts[0].strip()
-            rhs = '='.join(parts[1:]).strip()  # In case '=' appears more than once
-            ode_str = f"({lhs}) - ({rhs})"
-        # Insert explicit multiplication where users omit it, e.g. (x**2)y'' -> (x**2)*y'' or xy' -> x*y'
-        # Add '*' between a closing parenthesis and a following 'y' (with or without spaces)
-        ode_str = re.sub(r'\)\s*(?=y)', ')*', ode_str)
-        # Add '*' between an alphanumeric char and a following 'y(' or 'y' (handles 'x y' and 'x y(')
-        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s*(?=y\s*\()', '*', ode_str)
-        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s*(?=y(?!(\s*\()) )', '*', ode_str)
-        # Conservative fallback: if pattern like 'x y' remains, replace space before y with '*'
-        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s+(?=y)', '*', ode_str)
-        # Replace y'''' (4th), y''' (3rd), y'' (2nd), y' (1st), y (0th)
-        ode_str = re.sub(r"y\s*\(\s*x\s*\)", "y", ode_str)  # Remove explicit y(x) if user enters it
-        ode_str = re.sub(r"y''''", "y(x).diff(x,4)", ode_str)
-        ode_str = re.sub(r"y'''", "y(x).diff(x,3)", ode_str)
-        ode_str = re.sub(r"y''", "y(x).diff(x,2)", ode_str)
-        ode_str = re.sub(r"y'", "y(x).diff(x,1)", ode_str)
-        # Only replace standalone y (not y(x))
-        ode_str = re.sub(r"(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_\(])", "y(x)", ode_str)
         try:
-            ode_expr = sp.sympify(ode_str, locals={"x": x, "y": y})
+            ode_expr, x, y = parse_ode(ode_str)
         except Exception as e:
             print(f"Error parsing ODE #{idx+1}: {e}")
             return
@@ -253,11 +228,26 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
     try:
         if len(solutions) == 1:
             # Single ODE: plot as before
-            plot_solution(np.linspace(-10, 10, 400), solutions[0], title=labels[0])
+            plt.figure(figsize=(8, 5))
+            plt.plot(np.linspace(-10, 10, 400), solutions[0], label="y(x)")
+            plt.title(labels[0])
+            plt.xlabel("x")
+            plt.ylabel("y(x)")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
             print("[OK] Plot displayed successfully")
         else:
             # Multiple ODEs: compare
-            compare_orders(np.linspace(-10, 10, 400), solutions, labels=labels, title="Comparison of ODE Solutions")
+            plt.figure(figsize=(8, 5))
+            for i, y_vals in enumerate(solutions):
+                plt.plot(np.linspace(-10, 10, 400), y_vals, label=labels[i])
+            plt.title("Comparison of ODE Solutions")
+            plt.xlabel("x")
+            plt.ylabel("y(x)")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
             print("[OK] Comparison plot displayed successfully")
     except Exception as e:
         print(f"[ERROR] Visualization failed: {e}")

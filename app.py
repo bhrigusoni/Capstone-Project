@@ -7,8 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from ode_solver.solver import ODESolver
-from ode_solver.visualization import plot_solution
-from ode_solver.order_comparison import compare_orders
+from ode_solver.parser import parse_ode
 
 app = Flask(__name__)
 
@@ -40,27 +39,9 @@ def index():
             error = 'Please enter an ODE.'
         else:
             try:
-                import re
                 ode_str_display = ode_str  # Save for UI display
-                # Preprocess: insert * between number and y or y' or y'' etc.
-                ode_str = re.sub(r'(\d)(y(\'|\'\'|\'\'\'|\'\'\'\')?)', r'\1*\2', ode_str)
-                ode_str = re.sub(r'(\d)(y\s*\(\s*x\s*\))', r'\1*\2', ode_str)
-                ode_str = re.sub(r'(\))(y(\'|\'\'|\'\'\'|\'\'\'\')?)', r'\1*\2', ode_str)
-                ode_str = re.sub(r"(y\(x\)\.diff\(x,1\))\*\*", r"(\1)**", ode_str)
-                x = sp.symbols('x')
-                y = sp.Function('y')
-                ode_str = re.sub(r"y\s*\(\s*x\s*\)", "y", ode_str)
-                ode_str = re.sub(r"y''''", "y(x).diff(x,4)", ode_str)
-                ode_str = re.sub(r"y'''", "y(x).diff(x,3)", ode_str)
-                ode_str = re.sub(r"y''", "y(x).diff(x,2)", ode_str)
-                ode_str = re.sub(r"y'", "y(x).diff(x,1)", ode_str)
-                ode_str = re.sub(r"(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_\(])", "y(x)", ode_str)
-                if '=' in ode_str:
-                    parts = ode_str.split('=')
-                    lhs = parts[0].strip()
-                    rhs = '='.join(parts[1:]).strip()
-                    ode_str = f"({lhs}) - ({rhs})"
-                ode_expr = sp.sympify(ode_str, locals={"x": x, "y": y})
+                # Parse ODE using the parser utility
+                ode_expr, x, y = parse_ode(ode_str)
                 solver = ODESolver(ode_expr, y, x)
                 # --- ODE Analysis ---
                 analysis = solver.analyze()
