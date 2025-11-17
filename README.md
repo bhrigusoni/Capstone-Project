@@ -6,26 +6,33 @@ This project is an enhanced ODE Solver that supports both **Linear** and **Non-l
 ## Key Features
 
 ### 1. **Comprehensive ODE Support**
-- ✓ Linear ODEs (1st order to 4th order)
+- ✓ Linear constant-coefficient ODEs (1st to 4th order+)
+- ✓ Linear Euler–Cauchy (equidimensional) ODEs with variable coefficients
 - ✓ Non-linear separable ODEs
-- ✓ Non-linear equations (Riccati-like, Duffing, Logistic, etc.)
+- ✓ Non-linear equations (Riccati, Duffing, Logistic, Bernoulli, etc.)
 - ✓ Handles both explicit and implicit forms
 
 ### 2. **Dual Solution Strategy**
+- **Auxiliary Equation Method**: For linear constant-coefficient ODEs (builds characteristic equation)
+- **Euler–Cauchy Method**: For linear variable-coefficient equidimensional ODEs (falling-factorial substitution)
 - **Analytical Solutions**: Uses SymPy's `dsolve()` for equations with closed-form solutions
-- **Numerical Solutions**: Falls back to SciPy's `solve_ivp()` for equations without analytical solutions
+- **Numerical Solutions**: Falls back to SciPy's `solve_ivp()` (RK45) for equations without analytical solutions
 - **Smart Fallback**: Automatically attempts numerical solution if analytical fails
 
 ### 3. **ODE Analysis**
-- Determines ODE order (1st, 2nd, 3rd, 4th)
+- Determines ODE order (1st, 2nd, 3rd, 4th, and higher)
 - Classifies as Linear or Non-linear
-- For linear ODEs: computes auxiliary equation and classifies roots
+- For linear ODEs: detects constant-coefficient vs Euler–Cauchy vs general variable-coefficient
+- For constant-coefficient: computes auxiliary equation and classifies roots (real, complex, repeated)
+- For Euler–Cauchy: detects equidimensional form and computes characteristic equation with falling-factorial method
 - Provides detailed analysis before solving
 
 ### 4. **Visualization**
 - Plots analytical solutions with substituted constants
 - Plots numerical solutions with appropriate initial conditions
+- Domain-aware plotting: masks invalid points (e.g., log at negative x, fractional powers)
 - Interactive matplotlib display
+- Handles solutions with restricted domains (e.g., Euler–Cauchy solutions valid for x > 0)
 
 ## Installation
 
@@ -60,11 +67,19 @@ python main.py
 ### Input Format
 Enter ODEs in the following formats:
 
-#### Linear ODEs
+#### Linear Constant-Coefficient ODEs
 ```
 y'' - 3*y' + 2*y = 0
 y'' + 4*y' + 4*y = 0
 y' - y = 0
+y''' - 2*y'' + y' = 0
+```
+
+#### Linear Euler–Cauchy (Equidimensional) ODEs
+```
+x**2 * y'' + x*y' + y = 0
+x**2 * y'' + x*y' - y = 0
+x**3 * y''' + x*y' = 0
 ```
 
 #### Non-linear ODEs
@@ -150,16 +165,26 @@ Enter the ODE: y'' + y**3 = 0
 
 ## Supported ODE Types
 
-### Linear ODEs
-- Constant-coefficient homogeneous ODEs
-- Variable-coefficient ODEs (many common types)
-- Higher-order ODEs (up to 4th order)
+### Linear Constant-Coefficient ODEs
+- Homogeneous (RHS = 0)
+- Non-homogeneous with constant coefficients
+- 1st to 4th order and higher
+- Computes characteristic equation r^n + a_{n-1}*r^{n-1} + ... + a_0 = 0
+- Handles real, complex, and repeated roots
+
+### Linear Euler–Cauchy (Equidimensional) ODEs
+- Form: Σ a_k * x^k * y^(k) = 0 (equidimensional form)
+- Variable coefficients but special structure (a_k are constants)
+- Computes characteristic equation using falling factorial: Σ a_k * falling_fac(r, k) = 0
+- Examples: x^2*y'' + xy' + y = 0 (characteristic r^2 + 1 = 0 → solution with cos(ln x), sin(ln x))
+- Solutions often involve x^r, x^r*ln(x), cos(ln x), sin(ln x)
 
 ### Non-linear ODEs
 - **Separable**: y' = f(x)*g(y)
-- **Riccati-like**: y' + p(x)*y^2 = q(x)
-- **Duffing equation**: y'' + y^3 = 0
-- **Logistic equation**: y' - y*(1-y) = 0
+- **Riccati**: y' + P(x)*y^2 = Q(x)
+- **Duffing**: y'' + ay + by^3 = 0
+- **Logistic**: y' = y*(1-y)
+- **Bernoulli**: y' + p(x)*y = q(x)*y^n
 - Any equation solvable by SymPy's `dsolve()`
 
 ## Project Structure
@@ -225,7 +250,17 @@ x_vals, y_vals = solver.numerical_solution(
 Computes auxiliary/characteristic equation:
 ```python
 aux_eq, roots = solver.solve_auxiliary()
+# For constant-coefficient: returns characteristic polynomial equation and roots
+# For Euler–Cauchy: returns falling-factorial characteristic polynomial and roots
 # Returns: (SymPy expression, list of roots)
+```
+
+##### `is_euler_cauchy()` (Linear Variable-Coefficient ODEs)
+Detects and extracts coefficients from Euler–Cauchy equations:
+```python
+is_euler, coeffs = solver.is_euler_cauchy()
+# Returns: (True, [a_0, a_1, ..., a_n]) if equidimensional form detected
+#          (False, None) otherwise
 ```
 
 ##### `classify_roots()` (Linear ODEs only)
@@ -348,6 +383,8 @@ Solution: y(x) ≈ 1 / (e^(-x) + 1) - Sigmoid curve
 3. **Singular solutions** might be missed
 4. **Stiff systems** may require different numerical methods
 5. **Complex roots** are handled but may complicate visualization
+6. **Euler–Cauchy** limited to equidimensional form (not general variable-coefficient)
+7. **Preprocessing** handles common notation omissions but edge cases may exist
 
 ## Future Enhancements
 

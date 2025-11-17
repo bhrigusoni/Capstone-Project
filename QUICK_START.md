@@ -29,12 +29,21 @@ Option C: y'' = 3*y' - 2*y         # Explicit form
 
 ## 4. Example Inputs
 
-### LINEAR ODEs
+### LINEAR CONSTANT-COEFFICIENT ODEs
 ```
 y' - y = 0
 y'' + 2*y' + y = 0
 y'' - 4*y = 0
 3*y'' + 5*y' - 2*y = 0
+y''' - 2*y'' + y' = 0
+```
+
+### LINEAR EULER–CAUCHY (EQUIDIMENSIONAL) ODEs
+```
+x**2 * y'' + x*y' + y = 0        # Complex roots ±i → cos(ln x), sin(ln x)
+x**2 * y'' + x*y' - y = 0        # Real roots → x^r terms
+x**3 * y''' + x*y' = 0           # Higher order
+(x**2)y'' + xy' = 0              # No constant term
 ```
 
 ### NON-LINEAR ODEs
@@ -52,15 +61,27 @@ y' - y*(1-y) = 0
 Order: 1              # 1st, 2nd, 3rd, or 4th order
 Is Linear: True       # Linear or Non-linear
 Type: LINEAR ODE      # Classification
+Coefficient Type: CONSTANT or VARIABLE
 ```
 
-### For Linear ODEs Only
+### For Constant-Coefficient Linear ODEs
 ```
 Auxiliary equation: r^2 - 3*r + 2 = 0
 Roots: [1, 2]
 Root classification:
   Real roots: [1, 2]
   Complex roots: []
+  Repeated roots: []
+```
+
+### For Euler–Cauchy Linear ODEs
+```
+[VARIABLE-COEFFICIENT ODE - Euler-Cauchy detected]
+Characteristic equation (in r): r^2 + 1 = 0
+Roots (r): [-I, I]  (complex conjugate)
+Root classification:
+  Real roots: []
+  Complex roots: [-I, I]
   Repeated roots: []
 ```
 
@@ -86,7 +107,7 @@ OR
 
 ## 7. What Constants Mean
 
-### In Analytical Solutions
+### In Constant-Coefficient Linear Solutions
 ```
 y(x) = C1*e^x + C2*e^(2*x)
        ↑  ↑
@@ -94,19 +115,27 @@ y(x) = C1*e^x + C2*e^(2*x)
        Arbitrary constant 1
 ```
 
+### In Euler–Cauchy (Variable-Coefficient) Linear Solutions
+```
+y(x) = C1*x^(1+i) + C2*x^(1-i)    OR    y(x) = C1*x*cos(ln x) + C2*x*sin(ln x)
+       ↑ Power of x with complex r       ↑ x raised to power, times trig function
+```
+
 ### In Plots
 - Constants are set to: C1=1, C2=0, C3=0, etc.
-- This gives one specific solution (the homogeneous solution)
-- For initial value problems, choose different constants
+- This gives one specific solution (the principal solution)
+- For initial value problems, choose different constants based on initial conditions
 
 ## 8. Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| "Error parsing ODE" | Check syntax: y'' means second derivative |
-| No solution found | Try simpler ODE or check format |
-| Plot doesn't appear | Solution may be undefined in [-10,10]. Try anyway! |
-| "Numerical solution failed" | Try default initial conditions or reduce range |
+| "Error parsing ODE" | Check syntax: y'' means second derivative, use * for multiplication |
+| Variable-coefficient ODE not solved | If equidimensional (x^n*y, x*y', etc.), should use Euler–Cauchy method. If still fails, numerical approximation is shown |
+| No solution found | Try simpler ODE or check format. Check that x multiplication isn't omitted |
+| Plot doesn't appear | Solution may be undefined in [-10,10] (e.g., log domain issues). Try anyway! |
+| "Numerical solution failed" | Try simpler initial conditions or try the analytical solver first |
+| Solution contains ln(x) terms | Only plotted for x > 0 due to logarithm domain. Plot will show [0.1, 10] range |
 
 ## 9. Example Session
 
@@ -181,30 +210,47 @@ VISUALIZATION:
 ## 13. Mathematical Background
 
 ### What the solver does:
-1. **Parses** your equation using regex patterns
-2. **Analyzes** order (highest derivative) and linearity
-3. **Solves** using symbolic or numerical methods
-4. **Substitutes** constants for visualization
-5. **Plots** the solution
+1. **Parses** your equation using regex patterns to handle omitted multiplication
+2. **Analyzes** order (highest derivative), linearity, and coefficient type
+3. **Classifies** as one of:
+   - Constant-coefficient linear (uses auxiliary equation method)
+   - Euler–Cauchy variable-coefficient (uses characteristic equation with falling-factorial substitution)
+   - Non-linear (uses SymPy dsolve with numerical fallback)
+4. **Solves** using appropriate analytical or numerical method
+5. **Substitutes** constants for visualization (C1=1, C2=0, etc.)
+6. **Plots** the solution with domain-aware masking for log/power functions
 
-### Example Process:
+### Example Process (Constant-Coefficient):
 ```
 Input:  y'' - 3*y' + 2*y = 0
 Parse:  d²y/dx² - 3·dy/dx + 2·y = 0
-Analyze: Order 2, Linear
-Solve:  Try dsolve() → found! y = C1·e^x + C2·e^(2x)
+Analyze: Order 2, Linear, Constant-coefficient
+Solve:  Auxiliary: r² - 3r + 2 = 0 → r = 1, 2
+        Solution: y = C1·e^x + C2·e^(2x)
 Visualize: Set C1=1, C2=0 → plot e^x
+```
+
+### Example Process (Euler–Cauchy):
+```
+Input:  x^2*y'' + x*y' + y = 0
+Parse:  x²·d²y/dx² + x·dy/dx + y = 0
+Analyze: Order 2, Linear, Euler–Cauchy (equidimensional)
+Solve:  Characteristic: r² + 1 = 0 → r = ±i
+        Solution: y = C1·cos(ln x) + C2·sin(ln x)
+Visualize: Set C1=1, C2=0 → plot cos(ln x) for x > 0
 ```
 
 ## 14. For Your Project Report
 
 Include:
-- Screenshots of successful ODE solutions
-- Both linear and non-linear examples
-- Output analysis and solutions
-- Sample plots generated
-- Comparison of analytical vs numerical solutions
-- Advantages of the dual-method approach
+- Screenshots of successful ODE solutions covering all three types:
+  - **Linear Constant-Coefficient**: y'' - 3*y' + 2*y = 0 (real roots)
+  - **Linear Euler–Cauchy**: x^2*y'' + x*y' + y = 0 (complex roots → trigonometric solution)
+  - **Non-linear**: y' = x + y^2 (numerical solution)
+- Output analysis and characteristic/auxiliary equations
+- Sample plots generated (both analytical and numerical)
+- Comparison of three solver layers (symbolic, Euler–Cauchy, numerical)
+- Advantages of the multi-method approach (versatility and reliability)
 
 ## 15. Get Help
 

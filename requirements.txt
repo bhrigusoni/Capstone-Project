@@ -4,6 +4,12 @@
 # numpy: Numerical computations, array handling
 # matplotlib: Plotting and visualization
 # scipy: Numerical ODE solvers (for non-linear or unsolvable ODEs)
+Flask==2.3.2
+numpy==1.24.3
+scipy==1.11.1
+sympy==1.12
+matplotlib==3.7.1
+Werkzeug==2.3.7
 sympy
 numpy
 matplotlib

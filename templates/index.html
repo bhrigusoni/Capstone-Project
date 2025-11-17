@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ODE Solver</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root { --bg: #f5f7fa; --card: #fff; --text: #1f2937; --muted: #6b7280; --accent: #3b82f6; }
+        [data-theme="dark"] { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --accent: #60a5fa; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: all 0.2s; padding: 20px; }
+        .container { max-width: 850px; margin: 0 auto; background: var(--card); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1 { font-size: 32px; margin-bottom: 8px; }
+        .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 24px; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 10px; font-weight: 600; font-size: 16px; }
+        textarea { width: 100%; padding: 14px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Courier New', monospace; font-size: 15px; background: var(--card); color: var(--text); resize: vertical; min-height: 100px; line-height: 1.6; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        button { padding: 12px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: 600; transition: all 0.2s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-sample { background: rgba(59, 130, 246, 0.1); color: var(--accent); }
+        .btn-sample:hover { background: rgba(59, 130, 246, 0.2); }
+        .btn-secondary { background: rgba(0,0,0,0.05); color: var(--muted); }
+        .btn-secondary:hover { background: rgba(0,0,0,0.1); }
+        .error { background: #fee2e2; color: #991b1b; padding: 14px; border-radius: 6px; margin-bottom: 20px; font-size: 15px; }
+        .section { margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
+        .info-item { background: rgba(0,0,0,0.02); border-radius: 6px; padding: 14px; margin: 10px 0; }
+        .info-label { font-weight: 600; color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .info-value { font-size: 15px; line-height: 1.6; }
+        .info-value pre { background: rgba(0,0,0,0.03); padding: 10px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 14px; margin-top: 6px; line-height: 1.5; }
+        .copy-btn { margin-left: 8px; padding: 6px 10px; font-size: 12px; background: rgba(59,130,246,0.1); color: var(--accent); border: 1px solid rgba(59,130,246,0.3); border-radius: 4px; cursor: pointer; }
+        .copy-btn:hover { background: rgba(59,130,246,0.2); }
+        .format-tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+        .format-tab { padding: 6px 12px; border: none; border-radius: 4px; background: rgba(0,0,0,0.05); cursor: pointer; font-size: 13px; font-weight: 600; }
+        .format-tab.active { background: var(--accent); color: white; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+        .plot { margin-top: 20px; text-align: center; }
+        .plot img { max-width: 100%; height: auto; border-radius: 8px; }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .btn-group { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <div>
+                <h1>ODE Solver</h1>
+                <p class="subtitle">Enter an ODE to get solutions</p>
+            </div>
+            <button id="themeToggle" class="btn-secondary" style="height:fit-content;">🌙 Theme</button>
+        </div>
+
+        <form method="post">
+            <div class="input-group">
+                <label for="ode_input">Enter ODE:</label>
+                <textarea id="ode_input" name="ode_input" required placeholder="e.g., y'' - 3*y' + 2*y = 0">{{ request.form.ode_input or '' }}</textarea>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn-primary">▶ Solve</button>
+                <button type="button" class="btn-sample sample" data-ode="y'' - 3*y' + 2*y = 0">Example: 2nd Order</button>
+                <button type="button" class="btn-sample sample" data-ode="y' - x*y**2 = 0">Example: Riccati</button>
+                <button type="button" class="btn-sample sample" data-ode="y'' + y**3 = 0">Example: Duffing</button>
+            </div>
+        </form>
+
+        {% if error %}
+        <div class="error">⚠️ {{ error }}</div>
+        {% endif %}
+
+        {% if ode_details %}
+        <div class="section">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div class="section-title">Analysis</div>
+                <button id="toggleDetails" class="btn-secondary" style="font-size:12px;padding:6px 12px;">Hide</button>
+            </div>
+            <div id="detailsBody">
+                <div class="info-item">
+                    <div class="info-label">Parsed ODE</div>
+                    <div class="info-value">
+                        <div class="format-tabs">
+                            <button class="format-tab active" data-format="readable" onclick="switchFormat(this, 'ode')">Readable</button>
+                            <button class="format-tab" data-format="code" onclick="switchFormat(this, 'ode')">Code</button>
+                            <button class="format-tab" data-format="latex" onclick="switchFormat(this, 'ode')">LaTeX</button>
+                        </div>
+                        <div id="ode-readable"><pre>{{ ode_details.parsed_ode.readable }}</pre><button class="copy-btn" onclick="copyToClipboard('ode-readable-content')">Copy</button></div>
+                        <div id="ode-code" style="display:none;"><pre>{{ ode_details.parsed_ode.code }}</pre><button class="copy-btn" onclick="copyToClipboard('ode-code-content')">Copy</button></div>
+                        <div id="ode-latex" style="display:none;"><pre>{{ ode_details.parsed_ode.latex }}</pre><button class="copy-btn" onclick="copyToClipboard('ode-latex-content')">Copy</button></div>
+                    </div>
+                </div>
+                
+                <div class="grid">
+                    <div class="info-item">
+                        <div class="info-label">Order</div>
+                        <div class="info-value">{{ ode_details.order }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Type</div>
+                        <div class="info-value">{{ 'Linear' if ode_details.is_linear else 'Non-linear' }}</div>
+                    </div>
+                </div>
+
+                {% if ode_details.coeff_type %}
+                <div class="info-item">
+                    <div class="info-label">Coefficients</div>
+                    <div class="info-value">{{ ode_details.coeff_type }}</div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.aux_eq %}
+                <div class="info-item">
+                    <div class="info-label">Auxiliary Equation</div>
+                    <div class="info-value">
+                        <div class="format-tabs">
+                            <button class="format-tab active" data-format="readable" onclick="switchFormat(this, 'aux')">Readable</button>
+                            <button class="format-tab" data-format="code" onclick="switchFormat(this, 'aux')">Code</button>
+                            <button class="format-tab" data-format="latex" onclick="switchFormat(this, 'aux')">LaTeX</button>
+                        </div>
+                        <div id="aux-readable"><pre>{{ ode_details.aux_eq.readable }}</pre><button class="copy-btn" onclick="copyToClipboard('aux-readable-content')">Copy</button></div>
+                        <div id="aux-code" style="display:none;"><pre>{{ ode_details.aux_eq.code }}</pre><button class="copy-btn" onclick="copyToClipboard('aux-code-content')">Copy</button></div>
+                        <div id="aux-latex" style="display:none;"><pre>{{ ode_details.aux_eq.latex }}</pre><button class="copy-btn" onclick="copyToClipboard('aux-latex-content')">Copy</button></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.roots %}
+                <div class="info-item">
+                    <div class="info-label">Roots</div>
+                    <div class="info-value">{{ ode_details.roots }}</div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.root_types %}
+                <div class="info-item">
+                    <div class="info-label">Root Types</div>
+                    <div class="info-value">
+                        Real: {{ ode_details.root_types.real }} | Complex: {{ ode_details.root_types.complex }} | Repeated: {{ ode_details.root_types.repeated }}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.solution_type %}
+                <div class="info-item">
+                    <div class="info-label">Solution Type</div>
+                    <div class="info-value">{{ ode_details.solution_type }}</div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.solution_expr %}
+                <div class="info-item">
+                    <div class="info-label">Solution</div>
+                    <div class="info-value">
+                        <div class="format-tabs">
+                            <button class="format-tab active" data-format="readable" onclick="switchFormat(this, 'sol')">Readable</button>
+                            <button class="format-tab" data-format="code" onclick="switchFormat(this, 'sol')">Code</button>
+                            <button class="format-tab" data-format="latex" onclick="switchFormat(this, 'sol')">LaTeX</button>
+                        </div>
+                        <div id="sol-readable"><pre>{{ ode_details.solution_expr.readable }}</pre><button class="copy-btn" onclick="copyToClipboard('sol-readable-content')">Copy</button></div>
+                        <div id="sol-code" style="display:none;"><pre>{{ ode_details.solution_expr.code }}</pre><button class="copy-btn" onclick="copyToClipboard('sol-code-content')">Copy</button></div>
+                        <div id="sol-latex" style="display:none;"><pre>{{ ode_details.solution_expr.latex }}</pre><button class="copy-btn" onclick="copyToClipboard('sol-latex-content')">Copy</button></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if ode_details.error %}
+                <div class="error">{{ ode_details.error }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if solution_img %}
+        <div class="plot">
+            <div class="section-title">Solution Plot</div>
+            <img src="data:image/png;base64,{{ solution_img }}" alt="Solution Plot">
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Sample buttons
+        document.querySelectorAll('.sample').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                document.getElementById('ode_input').value = btn.dataset.ode;
+            });
+        });
+
+        // Format switching for expressions
+        function switchFormat(btn, prefix) {
+            const format = btn.dataset.format;
+            const parent = btn.parentElement.parentElement;
+            
+            // Hide all formats
+            parent.querySelectorAll('[id^="' + prefix + '-"]').forEach(el => {
+                el.style.display = 'none';
+            });
+            
+            // Show selected format
+            document.getElementById(prefix + '-' + format).style.display = 'block';
+            
+            // Update active tab
+            btn.parentElement.querySelectorAll('.format-tab').forEach(b => {
+                b.classList.remove('active');
+            });
+            btn.classList.add('active');
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) {
+                const parent = document.getElementById(elementId.split('-')[0] + '-' + elementId.split('-')[1]);
+                if (!parent) return;
+                el = parent.querySelector('pre');
+            } else {
+                el = el.querySelector('pre') || el;
+            }
+            
+            const text = el.innerText || el.textContent || '';
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy');
+            });
+        }
+
+        // Get content from pre element
+        function getPreContent(elementId) {
+            const container = document.getElementById(elementId);
+            if (!container) return '';
+            const pre = container.querySelector('pre');
+            return pre ? (pre.innerText || pre.textContent || '').trim() : '';
+        }
+
+        // Override copy button onclick to use getPreContent
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const container = this.parentElement;
+                const pre = container.querySelector('pre');
+                const text = pre ? (pre.innerText || pre.textContent || '').trim() : '';
+                
+                navigator.clipboard.writeText(text).then(() => {
+                    const oldText = this.textContent;
+                    this.textContent = '✓ Copied!';
+                    setTimeout(() => { this.textContent = oldText; }, 1500);
+                }).catch(() => {
+                    alert('Failed to copy');
+                });
+            });
+        });
+
+        // Toggle details
+        const toggleBtn = document.getElementById('toggleDetails');
+        const detailsBody = document.getElementById('detailsBody');
+        if (toggleBtn && detailsBody) {
+            toggleBtn.addEventListener('click', () => {
+                if (detailsBody.style.display === 'none') {
+                    detailsBody.style.display = '';
+                    toggleBtn.textContent = 'Hide';
+                } else {
+                    detailsBody.style.display = 'none';
+                    toggleBtn.textContent = 'Show';
+                }
+            });
+        }
+
+        // Theme toggle
+        const themeBtn = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        html.setAttribute('data-theme', savedTheme === 'dark' ? 'dark' : 'light');
+        
+        themeBtn.addEventListener('click', () => {
+            const isDark = html.getAttribute('data-theme') === 'dark';
+            html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+            localStorage.setItem('theme', isDark ? 'light' : 'dark');
+        });
+    </script>
+</body>
+</html>

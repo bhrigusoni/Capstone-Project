@@ -68,6 +68,8 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
     import re
     x = sp.symbols('x')
     y = sp.Function('y')
+    # Common x grid used for plotting (can be masked for invalid points)
+    x_common = np.linspace(-10, 10, 400)
     solutions = []
     labels = []
     for idx, ode_str in enumerate(ode_strs):
@@ -78,6 +80,14 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
             lhs = parts[0].strip()
             rhs = '='.join(parts[1:]).strip()  # In case '=' appears more than once
             ode_str = f"({lhs}) - ({rhs})"
+        # Insert explicit multiplication where users omit it, e.g. (x**2)y'' -> (x**2)*y'' or xy' -> x*y'
+        # Add '*' between a closing parenthesis and a following 'y' (with or without spaces)
+        ode_str = re.sub(r'\)\s*(?=y)', ')*', ode_str)
+        # Add '*' between an alphanumeric char and a following 'y(' or 'y' (handles 'x y' and 'x y(')
+        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s*(?=y\s*\()', '*', ode_str)
+        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s*(?=y(?!(\s*\()) )', '*', ode_str)
+        # Conservative fallback: if pattern like 'x y' remains, replace space before y with '*'
+        ode_str = re.sub(r'(?<=[0-9A-Za-z_])\s+(?=y)', '*', ode_str)
         # Replace y'''' (4th), y''' (3rd), y'' (2nd), y' (1st), y (0th)
         ode_str = re.sub(r"y\s*\(\s*x\s*\)", "y", ode_str)  # Remove explicit y(x) if user enters it
         ode_str = re.sub(r"y''''", "y(x).diff(x,4)", ode_str)
@@ -135,9 +145,36 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
                 except Exception as e:
                     print(f"[ERROR] Error computing auxiliary equation: {str(e)[:100]}")
             else:
-                print("[VARIABLE-COEFFICIENT ODE]")
-                print("Note: Auxiliary equation method NOT applicable to variable-coefficient ODEs.")
-                print("Using direct symbolic/numerical methods instead.")
+                # Check for Euler-Cauchy (equidimensional) special case which is
+                # a variable-coefficient linear ODE but admits a characteristic equation
+                is_euler, e_coeffs = solver.is_euler_cauchy()
+                if is_euler:
+                    print("[VARIABLE-COEFFICIENT ODE - Euler-Cauchy detected]")
+                    print("[EULER-CAUCHY ODE - Computing characteristic equation via r-substitution]")
+                    try:
+                        aux_eq, roots = solver.solve_auxiliary()
+                        if aux_eq is not None and roots is not None:
+                            print("\nCharacteristic equation (in r):")
+                            sp.pprint(aux_eq)
+                            print("= 0")
+                            print(f"Roots (r): {roots}")
+                            try:
+                                root_types = solver.classify_roots()
+                                if root_types is not None:
+                                    print(f"\nRoot classification:")
+                                    print(f"  Real roots: {root_types['real']}")
+                                    print(f"  Complex roots: {root_types['complex']}")
+                                    print(f"  Repeated roots: {root_types['repeated']}")
+                            except Exception as e:
+                                print(f"[INFO] Could not classify roots: {str(e)[:80]}")
+                        else:
+                            print("[INFO] Euler-Cauchy detected but could not compute characteristic equation")
+                    except Exception as e:
+                        print(f"[ERROR] Error computing Euler-Cauchy characteristic equation: {str(e)[:100]}")
+                else:
+                    print("[VARIABLE-COEFFICIENT ODE]")
+                    print("Note: Auxiliary equation method NOT applicable to variable-coefficient ODEs.")
+                    print("Using direct symbolic/numerical methods instead.")
         # Try to find analytical solution
         print(f"\n{'-'*80}\nSOLVING ODE #{idx+1}...\n{'-'*80}")
         sol_analytical = solver.general_solution()
@@ -174,13 +211,40 @@ Enter the equation as: LHS = RHS (or just LHS if RHS=0)
             subs = {c: 1 if i == 0 else 0 for i, c in enumerate(constants)}
             rhs_num = rhs.subs(subs)
             f_lambdified = sp.lambdify(x, rhs_num, modules=['numpy'])
-            x_vals = np.linspace(-10, 10, 400)
-            y_vals = f_lambdified(x_vals)
+
+            # Try vectorized evaluation; fall back to elementwise if needed
+            try:
+                y_try = f_lambdified(x_common)
+            except Exception:
+                # Elementwise evaluation
+                y_list = []
+                for xv in x_common:
+                    try:
+                        y_list.append(float(f_lambdified(xv)))
+                    except Exception:
+                        y_list.append(np.nan)
+                y_try = np.array(y_list, dtype=float)
+
+            # Normalize scalar results to array
+            if np.isscalar(y_try) or (hasattr(y_try, 'shape') and y_try.shape == ()): 
+                y_vals = np.full_like(x_common, float(y_try), dtype=float)
+            else:
+                y_vals = np.array(y_try, dtype=float)
+
+            # Mask non-finite values (log domain, etc.)
+            y_vals = np.where(np.isfinite(y_vals), y_vals, np.nan)
+
             solutions.append(y_vals)
             labels.append(f"ODE #{idx+1} ({analysis['order']} order)")
         else:
-            # Numerical solution
-            solutions.append(y_vals)
+            # Numerical solution (x_vals, y_vals returned)
+            # If numerical solver returned a tuple, align to x_common where possible
+            try:
+                # If y_vals is array over same grid, use as-is
+                y_arr = np.array(y_vals, dtype=float)
+            except Exception:
+                y_arr = np.array(y_vals)
+            solutions.append(y_arr)
             labels.append(f"ODE #{idx+1} ({analysis['order']} order)")
     # Visualization
     print("\n" + "="*80)

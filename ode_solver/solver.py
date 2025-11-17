@@ -102,6 +102,71 @@ class ODESolver:
         
         return True
 
+    def is_euler_cauchy(self):
+        """
+        Detect if the linear ODE is an Euler-Cauchy (equidimensional) equation.
+        Euler-Cauchy form: sum_{k=0..n} a_k * x^{n-k} * y^{(k)} = 0
+        Returns (True, coeffs) where coeffs is a list [a_0, a_1, ..., a_n]
+        with constant coefficients a_k (may be symbolic but independent of x).
+        Returns (False, None) if not Euler-Cauchy.
+        """
+        analysis = self.analyze()
+        if not analysis['is_linear']:
+            return False, None
+
+        order = analysis['order']
+        y = self.func(self.var)
+        x = self.var
+
+        # Get homogeneous part
+        expr = self.ode_expr
+        if isinstance(expr, sp.Equality):
+            hom_expr = expr.lhs - expr.rhs
+        else:
+            hom_expr = expr
+
+        # Keep only terms containing y or its derivatives
+        derivs = [y.diff(x, i) for i in range(order + 1)]
+        hom_terms = []
+        for term in hom_expr.expand().as_ordered_terms():
+            if any(term.has(d) for d in derivs):
+                hom_terms.append(term)
+        hom_expr = sum(hom_terms)
+
+        coeffs = []
+        for k in range(order + 1):
+            deriv = y.diff(x, k)
+            # Robust coefficient extraction: substitute derivative with a temporary symbol
+            tmp_sym = sp.Symbol(f'_tmp_{k}')
+            try:
+                temp_expr = hom_expr.subs(deriv, tmp_sym)
+                coeff = sp.simplify(temp_expr.coeff(tmp_sym, 1))
+            except Exception:
+                return False, None
+
+            # allow zero coeffs
+            if coeff == 0:
+                coeffs.append(0)
+                continue
+
+            # Ensure coeff depends only on x (or is constant)
+            free = coeff.free_symbols
+            if free and any(s != x for s in free):
+                return False, None
+
+            # Determine constant factor a_k by dividing by x**k
+            try:
+                div = sp.simplify(coeff / (x ** k))
+            except Exception:
+                return False, None
+
+            if div.has(x):
+                return False, None
+
+            coeffs.append(sp.simplify(div))
+
+        return True, coeffs
+
     def solve_auxiliary(self):
         """
         Construct and solve the auxiliary (characteristic) equation for constant-coefficient linear ODEs.
@@ -115,7 +180,30 @@ class ODESolver:
         
         # Check if it's constant-coefficient
         if not self.is_constant_coefficient():
-            return None, None  # Variable-coefficient linear ODE
+            # Try Euler-Cauchy (equidimensional) detection and handling
+            is_euler, e_coeffs = self.is_euler_cauchy()
+            if is_euler:
+                # Build auxiliary equation for Euler-Cauchy via substitution y = x^r
+                r = sp.symbols('r')
+                aux = 0
+                # e_coeffs correspond to a_0 ... a_n where original term was a_k * x^{n-k} * y^{(k)}
+                for k, a_k in enumerate(e_coeffs):
+                    # falling factorial: product_{j=0..k-1} (r - j)
+                    if k == 0:
+                        ff = 1
+                    else:
+                        ff = 1
+                        for j in range(k):
+                            ff = ff * (r - j)
+                    aux += sp.simplify(a_k * ff)
+                aux_eq = sp.simplify(aux)
+                try:
+                    roots = sp.solve(aux_eq, r)
+                except:
+                    roots = []
+                return aux_eq, roots
+
+            return None, None  # Variable-coefficient linear ODE not handled here
         
         order = analysis['order']
         y = self.func(self.var)
@@ -194,9 +282,28 @@ class ODESolver:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sol = sp.dsolve(self.ode_expr, self.func(self.var))
-            self.solution = sol
-            self.solution_type = 'analytical'
-            return sol
+            # sympy.dsolve may return a list of solutions for some nonlinear ODEs
+            # Normalize to a single Eq() when possible
+            if isinstance(sol, (list, tuple)) and len(sol) > 0:
+                first = sol[0]
+                # pick the first Eq-like solution if available
+                if hasattr(first, 'rhs'):
+                    sol = first
+                else:
+                    # try to find an Eq in the collection
+                    for item in sol:
+                        if hasattr(item, 'rhs'):
+                            sol = item
+                            break
+            # Only accept solutions that look like Eq(y(x), ...)
+            if sol is not None and hasattr(sol, 'rhs'):
+                self.solution = sol
+                self.solution_type = 'analytical'
+                return sol
+            else:
+                # Could be an unsupported return type
+                self.solution_type = 'numerical'
+                return None
         except Exception as e:
             print(f"\nNote: Analytical solution not available.")
             print(f"Reason: {str(e)[:100]}")
