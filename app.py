@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sympy as sp
 import numpy as np
 import io
@@ -114,6 +114,10 @@ def index():
                     plt.close(fig)
                     ode_details['solution_type'] = 'Analytical'
                     ode_details['solution_expr'] = format_expression(sol_analytical)
+                    # Expose constants and RHS expression code for client-side evaluation via AJAX
+                    ode_details['constants'] = [str(c) for c in constants]
+                    ode_details['constants_defaults'] = {str(c): (1 if i == 0 else 0) for i, c in enumerate(constants)}
+                    ode_details['solution_rhs_code'] = str(rhs)
                 else:
                     x_vals, y_vals = solver.numerical_solution(x0=0, y0=None, x_span=(-10, 10))
                     if x_vals is not None and y_vals is not None:
@@ -137,6 +141,73 @@ def index():
             except Exception as e:
                 error = f'Error: {e}'
     return render_template('index.html', solution_img=solution_img, error=error, ode_details=ode_details)
+
+
+@app.route('/eval_solution', methods=['POST'])
+def eval_solution():
+    data = request.get_json() or {}
+    expr_code = data.get('expr_code')
+    constants = data.get('constants', {})
+    x_span = data.get('x_span', [-10, 10])
+
+    if not expr_code:
+        return jsonify({'error': 'No expression provided'}), 400
+
+    try:
+        x = sp.symbols('x')
+        expr = sp.sympify(expr_code, locals={'x': x})
+    except Exception as e:
+        return jsonify({'error': f'Invalid expression: {e}'}), 400
+
+    # Substitute constants into the expression
+    for k, v in (constants or {}).items():
+        try:
+            sym = sp.symbols(k)
+            expr = expr.subs(sym, float(v))
+        except Exception:
+            # Skip invalid substitutions
+            continue
+
+    try:
+        f = sp.lambdify(x, expr, modules=['numpy'])
+    except Exception as e:
+        return jsonify({'error': f'Error creating numeric function: {e}'}), 500
+
+    x_common = np.linspace(x_span[0], x_span[1], 400)
+    try:
+        y_try = f(x_common)
+    except Exception:
+        y_list = []
+        for xv in x_common:
+            try:
+                y_list.append(float(f(xv)))
+            except Exception:
+                y_list.append(np.nan)
+        y_try = np.array(y_list, dtype=float)
+
+    if np.isscalar(y_try) or (hasattr(y_try, 'shape') and y_try.shape == ()): 
+        y_vals = np.full_like(x_common, float(y_try), dtype=float)
+    else:
+        y_vals = np.array(y_try, dtype=float)
+    y_vals = np.where(np.isfinite(y_vals), y_vals, np.nan)
+
+    # Create plot image
+    try:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(x_common, y_vals, label='y(x)')
+        ax.set_title('ODE Solution (Analytical)')
+        ax.set_xlabel('x')
+        ax.set_ylabel('y(x)')
+        ax.legend()
+        ax.grid(True)
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        solution_img = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close(fig)
+        return jsonify({'solution_img': solution_img})
+    except Exception as e:
+        return jsonify({'error': f'Plotting failed: {e}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

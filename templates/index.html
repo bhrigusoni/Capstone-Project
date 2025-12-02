@@ -9,7 +9,7 @@
         :root { --bg: #f5f7fa; --card: #fff; --text: #1f2937; --muted: #6b7280; --accent: #3b82f6; }
         [data-theme="dark"] { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --accent: #60a5fa; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: all 0.2s; padding: 20px; }
-        .container { max-width: 850px; margin: 0 auto; background: var(--card); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .container { max-width: 1100px; margin: 0 auto; background: var(--card); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         h1 { font-size: 32px; margin-bottom: 8px; }
         .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 24px; }
         .input-group { margin-bottom: 20px; }
@@ -26,7 +26,8 @@
         .error { background: #fee2e2; color: #991b1b; padding: 14px; border-radius: 6px; margin-bottom: 20px; font-size: 15px; }
         .section { margin-bottom: 24px; }
         .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
-        .info-item { background: rgba(0,0,0,0.02); border-radius: 6px; padding: 14px; margin: 10px 0; }
+        .info-item { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 16px; margin: 0; box-shadow: 0 1px 4px rgba(2,6,23,0.06); border: 1px solid rgba(2,6,23,0.03); transition: transform 0.12s ease, box-shadow 0.12s ease; }
+        .info-item:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(2,6,23,0.08); }
         .info-label { font-weight: 600; color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
         .info-value { font-size: 15px; line-height: 1.6; }
         .info-value pre { background: rgba(0,0,0,0.03); padding: 10px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 14px; margin-top: 6px; line-height: 1.5; }
@@ -35,10 +36,17 @@
         .format-tabs { display: flex; gap: 8px; margin-bottom: 8px; }
         .format-tab { padding: 6px 12px; border: none; border-radius: 4px; background: rgba(0,0,0,0.05); cursor: pointer; font-size: 13px; font-weight: 600; }
         .format-tab.active { background: var(--accent); color: white; }
+        /* Info grid - cardized boxes stack side-by-side */
+        .info-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px; }
+        @media (min-width: 640px) { .info-grid { grid-template-columns: 1fr 1fr; } }
+        @media (min-width: 1100px) { .info-grid { grid-template-columns: 1fr 1fr 1fr; } }
+        /* full-width grid item spans all columns */
+        .info-grid > .full-width { grid-column: 1 / -1; }
+        /* Maintain legacy .grid for compatibility */
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
         .plot { margin-top: 20px; text-align: center; }
         .plot img { max-width: 100%; height: auto; border-radius: 8px; }
-        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .btn-group { flex-direction: column; } }
+        @media (max-width: 600px) { .grid, .info-grid { grid-template-columns: 1fr; } .btn-group { flex-direction: column; } }
     </style>
 </head>
 <body>
@@ -90,7 +98,7 @@
                     </div>
                 </div>
                 
-                <div class="grid">
+                <div class="info-grid">
                     <div class="info-item">
                         <div class="info-label">Order</div>
                         <div class="info-value">{{ ode_details.order }}</div>
@@ -99,7 +107,7 @@
                         <div class="info-label">Type</div>
                         <div class="info-value">{{ 'Linear' if ode_details.is_linear else 'Non-linear' }}</div>
                     </div>
-                </div>
+                <!-- keep the info-grid open to collect additional items (coeffs, aux, roots, root types, solution type) -->
 
                 {% if ode_details.coeff_type %}
                 <div class="info-item">
@@ -163,6 +171,22 @@
                 </div>
                 {% endif %}
 
+                {% if ode_details.constants %}
+                <div class="info-item">
+                    <div class="info-label">Constants</div>
+                    <div class="info-value">
+                        <div id="constants-controls">
+                            {% for c in ode_details.constants %}
+                            <div style="margin-bottom:6px; display:flex; gap:8px; align-items:center;">
+                                <label style="min-width:60px;">{{ c }}</label>
+                                <input class="const-input" data-const="{{ c }}" type="number" step="any" value="{{ ode_details.constants_defaults[c] }}">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 {% if ode_details.error %}
                 <div class="error">{{ ode_details.error }}</div>
                 {% endif %}
@@ -173,7 +197,7 @@
         {% if solution_img %}
         <div class="plot">
             <div class="section-title">Solution Plot</div>
-            <img src="data:image/png;base64,{{ solution_img }}" alt="Solution Plot">
+            <img id="solutionPlotImg" src="data:image/png;base64,{{ solution_img }}" alt="Solution Plot">
         </div>
         {% endif %}
     </div>
@@ -278,6 +302,57 @@
             html.setAttribute('data-theme', isDark ? 'light' : 'dark');
             localStorage.setItem('theme', isDark ? 'light' : 'dark');
         });
+
+        // AJAX update for solution plot
+        {% if ode_details and ode_details.solution_rhs_code %}
+        (function(){
+            const exprCode = {{ ode_details.solution_rhs_code | tojson }};
+            const imgEl = document.getElementById('solutionPlotImg');
+            const controls = document.querySelectorAll('.const-input');
+            const btn = document.getElementById('updateConstantsBtn');
+            let timeout = null;
+
+            function readConstants(){
+                const obj = {};
+                controls.forEach(c => {
+                    const name = c.dataset.const;
+                    const val = parseFloat(c.value);
+                    if (!isNaN(val)) obj[name] = val;
+                });
+                return obj;
+            }
+
+            function updateNow(){
+                const constants = readConstants();
+                fetch('/eval_solution', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expr_code: exprCode, constants: constants })
+                }).then(r => r.json()).then(data => {
+                    if (data.error){
+                        alert('Error: ' + data.error);
+                        return;
+                    }
+                    if (data.solution_img){
+                        if (imgEl) imgEl.src = 'data:image/png;base64,' + data.solution_img;
+                    }
+                }).catch(err => {
+                    console.error('AJAX error', err);
+                })
+            }
+
+            controls.forEach(c => {
+                c.addEventListener('input', () => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(updateNow, 350);
+                });
+            });
+
+            if (btn){
+                btn.addEventListener('click', (e) => { e.preventDefault(); updateNow(); });
+            }
+        })();
+        {% endif %}
     </script>
 </body>
 </html>
