@@ -18,7 +18,5 @@ Provide graphical visualization of the solution behaviors across second, third, 
 
 Allow comparison between the solutions of different orders, highlighting how the order affects the solution characteristics.
 
-Optionally integrate machine learning techniques to predict solvability or approximate solutions where symbolic solutions are intractable.
-
 The project bridges classical analytical methods with modern computational techniques to provide an interactive, adaptable tool for solving and understanding diverse ODEs encountered in scientific and engineering applications.
 

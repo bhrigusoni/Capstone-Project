@@ -61,8 +61,16 @@ matplotlib     # Plotting
 
 ### Running the Solver
 ```bash
+# CLI (interactive terminal):
 python main.py
+
+# Web UI (Flask):
+python app.py
 ```
+
+### Running the Web App
+- Start the Flask app using `python app.py` and open a browser at `http://localhost:5000`.
+- Use the interactive UI to submit ODEs and visualize solutions with copy-to-clipboard and format toggles.
 
 ### Input Format
 Enter ODEs in the following formats:
@@ -191,20 +199,17 @@ Enter the ODE: y'' + y**3 = 0
 
 ```
 Capstone Project/
-├── main.py                          # Main entry point
+├── app.py                           # Flask web app (templates/index.html)
+├── main.py                          # CLI entry point (interactive terminal solver)
 ├── requirements.txt                 # Package dependencies
-├── test_solver.py                   # Comprehensive test suite
 ├── problem.txt                      # Problem statement
 ├── ode_solver/
 │   ├── __init__.py
-│   ├── solver.py                    # Core ODE solver logic
-│   ├── visualization.py             # Plotting utilities
-│   ├── order_comparison.py          # Solution comparison tools
+│   ├── parser.py                    # ODE parser and preprocessing
+│   ├── solver.py                    # Core ODE solver logic (analytical + numerical)
 │   └── __pycache__/
-└── dummydataset/
-    ├── dataset.ipynb
-    ├── ode_dataset_1_to_4_order.json
-    └── ode_dataset_correct_coeffs.json
+├── templates/
+│   └── index.html                   # Flask UI template
 ```
 
 ## Solver Module (`ode_solver/solver.py`)
@@ -243,7 +248,7 @@ x_vals, y_vals = solver.numerical_solution(
     y0=[1.0, 0.0],                 # Initial conditions [y(x0), y'(x0), ...]
     x_span=(-10, 10)               # Integration range
 )
-# Returns: (x array, y array) or (None, None) if failed
+# Returns: (x array, y array) where the first array is the x grid and the second is y(x), or (None, None) if solving failed
 ```
 
 ##### `solve_auxiliary()` (Linear ODEs only)
@@ -270,6 +275,16 @@ classification = solver.classify_roots()
 # Returns: {'real': [...], 'complex': [...], 'repeated': [...]}
 ```
 
+Additional helper methods in `solver.py`:
+- `is_constant_coefficient()` — check whether a detected linear ODE has constant coefficients (helps determine if auxiliary equation applies)
+- `_create_first_order_system()` — internal helper that converts an nth-order ODE into a first-order system for numerical integration with SciPy's `solve_ivp`
+
+## Parser Module (`ode_solver/parser.py`)
+
+`parser.py` contains helper functions to preprocess and parse ODE strings entered by users in a friendly syntax.
+- `preprocess_ode_string(ode_str)` — normalizes user input by inserting implicit multiplications, converting y' notation to `y(x).diff(x,n)`, and moving RHS terms to the LHS.
+- `parse_ode(ode_str)` — uses `preprocess_ode_string` and `sympy.sympify()` to create a SymPy expression together with `x` and `y` symbols.
+
 ## Numerical Solution Details
 
 ### Method
@@ -292,10 +307,8 @@ If not specified, uses:
 
 ## Testing
 
-### Run All Tests
-```bash
-python test_solver.py
-```
+### Tests
+There are currently no automated tests included in the repository. You can add unit tests using pytest or unittest in a `tests/` folder and run them with pytest.
 
 ### Test Coverage
 - Linear 1st order ODEs
